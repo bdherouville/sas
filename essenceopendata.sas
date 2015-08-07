@@ -1,14 +1,13 @@
 OPTIONS SPOOL;
-%let delim=%sysfunc(ifc(%eval(sysscp. = WIN),\,/));
-%let vahost=vamaster;
+%let delim=%sysfunc(ifc(%eval(&sysscp. = WIN),\,/));
+%let vaserver=vamaster;
 %let folder=/opt/sas/datas/lasradm;
 %let proxyhost="";
 %let proxyport=0;
 %let stopdate = %sysfunc(year(%sysfunc(today())));
+libname essence "&folder";
 
-libname essence "folder";
-
-filename xmlmap "folder.&delim.PrixCarburants_annuel_xmlmap.map";
+filename xmlmap "&folder.&delim.PrixCarburants_annuel_xmlmap.map";
 DATA _NULL_;
   FILE xmlmap dsd;
   PUT '<?xml version="1.0" encoding="UTF-8"?>
@@ -227,38 +226,36 @@ run;
 
 
 %macro download();
-%do i=2007 %to stopdate-1;      
-filename download "folder.&delim.PrixCarburants_annuel_&i..zip";
+%do i=2007 %to &stopdate-1;      
+filename download "&folder.&delim.PrixCarburants_annuel_&i..zip";
 /* Telechargement du fichier avec la proc HTTP*/
-proc http  method='GET'  url="http://donnees.roulez-eco.fr/opendata/annee/i"
- proxyhost=proxyhost proxyport=&proxyport
+proc http  method='GET'  url="http://donnees.roulez-eco.fr/opendata/annee/&i"
+ proxyhost=&proxyhost proxyport=&proxyport
  out=download;
 run;
 %end;
-filename download "folder.&delim.PrixCarburants_annuel_&stopdate..zip";
+filename download "&folder.&delim.PrixCarburants_annuel_&stopdate..zip";
 /* Telechargement du fichier avec la proc HTTP*/
 proc http  method='GET'  url="http://donnees.roulez-eco.fr/opendata/annee"
- proxyhost=proxyhost proxyport=&proxyport  out=download;
+ proxyhost=&proxyhost proxyport=&proxyport  out=download;
 run;
 %mend download;
-/*%download();*/
-
-
+%download();
 
 %macro createtable();
 proc datasets library=essence;
    delete pdv prix;
 run;
 /*%let stop = %sysfunc(year(%sysfunc(today())));*/
-%do i=2007 %to stopdate;      
+%do i=2007 %to &stopdate;      
 /*--- Declaration du fichier zip avec le filename "zip"---*/
-filename inzip zip "folder.&delim.PrixCarburants_annuel_&i..zip";
-/*--- data _null_ car il n'y a pas de creation de table SAS a ce stade ---*/
+filename inzip zip "&folder.&delim.PrixCarburants_annuel_&i..zip";
+/*--- data _null_ car il n'y a pas de création de table SAS a ce stade ---*/
 data _null_;
 /*--- le infile "inzip" va lire le fichier XML directement dans le zip*/
-infile inzip("PrixCarburants_annuel_i..xml");
+infile inzip("PrixCarburants_annuel_&i..xml");
 /*--- déclaration du fichier de sortie*/
-file "folder.&delim.PrixCarburants_annuel_&i._final.xml";
+file "&folder.&delim.PrixCarburants_annuel_&i._final.xml";
 /*--- remplissage de l'input buffer*/
 input;
 
@@ -267,10 +264,10 @@ input;
 _infile_ = tranwrd(_infile_, "35***", "35000");
 /*--- _infile_ est la variable pour acceder au contenu de l input buffer. 
 htmldecode remplace la valeur de _infile_ avec la meme valeur dont les balises HTML ont ete converties en caracteres.*/
-_infile_ = tranwrd(_infile_, "#x8C;", "OE");
-/*_infile_ = tranwrd(_infile_, "#xCODE;","œ");*/
-_infile_ = tranwrd(_infile_, "#xC3;&#x89;", "É");
-_infile_ = tranwrd(_infile_, "#xC3;&#xA0;", "à");
+_infile_ = tranwrd(_infile_, "&#x8C;", "OE");
+/*_infile_ = tranwrd(_infile_, "&#xCODE;","œ");*/
+_infile_ = tranwrd(_infile_, "&#xC3;&#x89;", "É");
+_infile_ = tranwrd(_infile_, "&#xC3;&#xA0;", "à");
 /*_infile_ = tranwrd(_infile_, 'encoding="ISO-8859-1"', 'encoding="UTF-8"');*/
 
 _infile_ = htmldecode(_infile_);
@@ -278,21 +275,21 @@ _infile_ = htmldecode(_infile_);
 put _infile_;
 run;
 
-libname essxml xmlv2 "folder.&delim.PrixCarburants_annuel_&i._final.xml"
-xmlmap="folder.&delim.PrixCarburants_annuel_xmlmap.map";
+libname essxml xmlv2 "&folder.&delim.PrixCarburants_annuel_&i._final.xml"
+xmlmap="&folder.&delim.PrixCarburants_annuel_xmlmap.map";
 
-data prix_tmpi/*(drop=prix_maj)*/;
+data prix_tmp&i/*(drop=prix_maj)*/;
         set essxml.prix;
         format prix_majdate datetime21.2 prix_euros 5.3;
         prix_majdate=input(trim(prix_maj),ymddttm24.);
         prix_euros=trim(prix_valeur/1000);
 run;
 
-proc sort data=prix_tmpi;
+proc sort data=prix_tmp&i;
 by pdv_ORDINAL;
 run;
 
-data pdv_tmpi;
+data pdv_tmp&i;
         set essxml.pdv;
 	  taille=1;
         ville=propcase(ville);        
@@ -301,12 +298,12 @@ data pdv_tmpi;
         pdv_longitude=pdv_longitude/100000;    
 run;
 
-proc sort data=pdv_tmpi;
+proc sort data=pdv_tmp&i;
 by pdv_ORDINAL;
 run;
-proc append base=essence.pdv data=pdv_tmpi FORCE;
+proc append base=essence.pdv data=pdv_tmp&i FORCE;
 run;
-proc append base=essence.prix data=prix_tmpi FORCE;
+proc append base=essence.prix data=prix_tmp&i FORCE;
 run;
 
 %end;
@@ -314,7 +311,7 @@ run;
 %createtable();
 
 LIBNAME vapublic SASHDAT PATH="/vapublic" 
-SERVER = "&vahost" INSTALL = "/opt/TKGrid";
+SERVER = "&vaserver" INSTALL = "/opt/TKGrid";
 
 PROC DATASETS LIB=VAPUBLIC;
 	delete pdv prix;
@@ -332,24 +329,24 @@ run;
 
 proc lasr port=10031
    data=vapublic.pdv
-   signer="http://&vahost:7980/SASLASRAuthorization"
+   signer="http://&vaserver:7980/SASLASRAuthorization"
     add noclass;
    performance 
-      host="&vahost"
+      host="&vaserver"
       ;
 run;
 
 proc lasr port=10031
    data=vapublic.prix
-   signer="http://&vahost:7980/SASLASRAuthorization"
+   signer="http://&vaserver:7980/SASLASRAuthorization"
     add noclass;
    performance 
-      host="&vahost";
+      host="&vaserver";
 run;
 
 
 
-LIBNAME LASRLIB SASIOLA  TAG=VAPUBLIC  PORT=10031 HOST="&vahost"  SIGNER="http://&&vahost:7980/SASLASRAuthorization" ;
+LIBNAME LASRLIB SASIOLA  TAG=VAPUBLIC  PORT=10031 HOST="&vaserver"  SIGNER="http://&vaserver:7980/SASLASRAuthorization" ;
 %vdb_dt(LASRLIB.ESSENCE);
 
 /** LASR STAR SCHEMA CODE **/
@@ -360,7 +357,7 @@ proc imstat;
        / prefix = PDV )
    ;
    run;
-   table LASRLIB._templast_;
+   table LASRLIB.&_templast_;
    promote ESSENCE;
    run;
 quit;
@@ -370,7 +367,7 @@ proc lasr port=10031;
     remove vapublic.prix;
     remove vapublic.pdv;
    	performance 
-    host="&vahost";
+    host="&vaserver";
 run;
 
 proc metalib;  
@@ -381,12 +378,13 @@ proc metalib;
 report;
 run;
 
+
 /* === Nettoyage ===*/
 /*
 
 %let folder=/opt/sas/datas/lasradm;
 
-libname essence "folder";
+libname essence "&folder";
 
 proc datasets library=essence;
    delete pdv prix;
@@ -394,7 +392,7 @@ run;
 
 
 LIBNAME vapublic SASHDAT PATH="/vapublic" 
-SERVER = "&vahost" INSTALL = "/opt/TKGrid";
+SERVER = "&vaserver" INSTALL = "/opt/TKGrid";
 
 
 PROC DATASETS LIB=VAPUBLIC;
@@ -405,10 +403,10 @@ proc lasr port=10031;
     remove vapublic.prix;
     remove vapublic.pdv;
    	performance 
-    host="&vahost";
+    host="&vaserver";
 run;
 
-LIBNAME LASRLIB SASIOLA  TAG=VAPUBLIC  PORT=10031 HOST="&vahost"  SIGNER="http://&&vahost:7980/SASLASRAuthorization" ;
+LIBNAME LASRLIB SASIOLA  TAG=VAPUBLIC  PORT=10031 HOST="&vaserver"  SIGNER="http://&vaserver:7980/SASLASRAuthorization" ;
 %vdb_dt(LASRLIB.ESSENCE);
 
 proc metalib;  
@@ -419,6 +417,3 @@ proc metalib;
 report;
 run;
 */
-
-
-
