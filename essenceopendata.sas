@@ -378,7 +378,7 @@ proc metalib ;
 	report;
 run;
 
-option set=GRIDHOST="vamaster.dherouville.home";
+option set=GRIDHOST="&vaserver";
 option set=GRIDINSTALLLOC="/opt/TKGrid";
 
 proc lasr port=10031;
